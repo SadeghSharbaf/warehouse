@@ -1,6 +1,9 @@
 from django.urls import path,include
 from inventory.api import views
+from rest_framework.routers import DefaultRouter
 
+router = DefaultRouter()
+router.register('receipt/', views.ReceiptVS, basename='receipt')
 
 urlpatterns = [
     path('items/',views.ItemListCreateView.as_view(),name='items-list'),

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from inventory.models import Item,Purchase,Inventory
+from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem
 
 class ItemSerializer(serializers.ModelSerializer):
     
@@ -8,7 +8,7 @@ class ItemSerializer(serializers.ModelSerializer):
         fields = "__all__"
         
 class PurchaseSerializer(serializers.ModelSerializer):
-    item = serializers.PrimaryKeyRelatedField(queryset=Item.objects.all())
+    item_name = serializers.CharField(source='item.name', read_only=True)
     
     class Meta:
         model = Purchase
@@ -19,4 +19,17 @@ class InventorySerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Inventory
+        fields = "__all__"
+        
+class ReceiptSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Receipt
+        fields = "__all__"
+        
+class ReceiptItemSerializer(serializers.ModelSerializer):
+    purchase_name = serializers.CharField(source='purchase.item.name', read_only=True)
+    
+    class Meta:
+        model = ReceiptItem
         fields = "__all__"

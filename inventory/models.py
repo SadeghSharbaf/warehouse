@@ -11,7 +11,7 @@ class Item(models.Model):
         return self.name
     
 class Purchase(models.Model):
-    item = models.ForeignKey(Item, verbose_name=("Item"), on_delete=models.CASCADE)
+    item = models.ForeignKey(Item, verbose_name="Item", on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
     price_per_unit = models.DecimalField(max_digits=10, decimal_places=2)
     purchase_date = models.DateTimeField(auto_now_add=True)
@@ -21,8 +21,30 @@ class Purchase(models.Model):
         return f"{self.quantity} {self.item.unit} of {self.item.name}"
     
 class Inventory(models.Model):
-    item = models.OneToOneField(Item, verbose_name=("item"), on_delete=models.CASCADE)
+    item = models.OneToOneField(Item, verbose_name="item", on_delete=models.CASCADE)
     total_quantity = models.PositiveIntegerField(default=0)
     
     def __str__(self):
         return f"{self.item.name}: {self.total_quantity} {self.item.unit}"
+    
+
+class Receipt(models.Model):
+    IMPORT = 'import'
+    EXPORT = 'export'
+    
+    TYPE_CHOICES =[
+        (IMPORT,'import'),
+        (EXPORT,'export')
+    ]
+    type = models.CharField(max_length=15,choices=TYPE_CHOICES)
+    creation_date = models.DateTimeField(auto_now_add=True)
+    optional_notes = models.TextField(blank=True,null=True)
+    
+    def __str__(self):
+        return f"{self.type} Receipt {self.pk}"
+    
+    
+class ReceiptItem(models.Model):
+    receipt = models.ForeignKey(Receipt,verbose_name="receipt", on_delete=models.CASCADE)
+    purchase = models.ForeignKey(Purchase,verbose_name="purchase", on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField()
