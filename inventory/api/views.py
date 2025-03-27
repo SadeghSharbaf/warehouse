@@ -1,7 +1,7 @@
 from rest_framework import generics,viewsets,serializers
 from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem
 from inventory.api import serializers
-from django.shortcuts import get_list_or_404
+from django.shortcuts import get_object_or_404
 
 class ItemListCreateView(generics.ListCreateAPIView):
     queryset = Item.objects.all()
@@ -34,7 +34,7 @@ class ReceiptItemView(generics.ListCreateAPIView):
     
     def perform_create(self, serializer):
         pk = self.request.data.get('receipt')
-        receipt = get_list_or_404(Receipt, pk=pk)
+        receipt = get_object_or_404(Receipt, pk=pk)
         
         receipt_item = serializer.save(receipt=receipt)
         purchase = receipt_item.purchase
