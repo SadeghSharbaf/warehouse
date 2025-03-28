@@ -1,5 +1,6 @@
 from rest_framework import generics,viewsets,serializers
-from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem
+from rest_framework.exceptions import ValidationError
+from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return
 from inventory.api import serializers
 from django.shortcuts import get_object_or_404
 
@@ -45,6 +46,9 @@ class ReceiptItemView(generics.ListCreateAPIView):
             inventory, created = Inventory.objects.get_or_create(item=item)
             inventory.total_quantity += quantity
             inventory.save()
+            
+            InventoryHistory.objects.create(item=item,change_type = Receipt.IMPORT,
+                                            quantity_changed = quantity)
         
         elif receipt.type == Receipt.EXPORT:
             quantity_to_deduct = quantity
@@ -68,7 +72,37 @@ class ReceiptItemView(generics.ListCreateAPIView):
             
             inventory.total_quantity -= quantity
             inventory.save()
+            
+            InventoryHistory.objects.create(item=item, change_type = Receipt.EXPORT,
+                                            quantity_changed = quantity)
         
 class ReceiptItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = ReceiptItem.objects.all()
     serializer_class = serializers.ReceiptItemSerializer
+    
+class InventoryHistoryListView(generics.ListAPIView):
+    queryset = InventoryHistory.objects.all().order_by('-timestamp')
+    serializer_class = serializers.InventoryHistorySerializer
+    
+class ReturnCreateView(generics.ListCreateAPIView):
+    queryset = Return.objects.all()
+    serializer_class = serializers.ReturnSerializer
+    
+    def perform_create(self, serializer):
+        return_item = serializer.save()
+        receipt_item = return_item.receipt_item
+        
+        if return_item.quantity_returned > receipt_item.quantity:
+            raise ValidationError("The returned quantity cannot exceed the exported quantity!")
+        print(f" Return Item Quantity: {return_item.quantity_returned}")
+
+        
+        inventory = Inventory.objects.get(item=receipt_item.purchase.item)
+        inventory.total_quantity += return_item.quantity_returned
+        inventory.save()
+        print(f"After Update: {inventory.total_quantity}")
+
+        
+class ReturnDetailView(generics.RetrieveAPIView):
+    queryset = Return.objects.all()
+    serializer_class = serializers.ReturnSerializer

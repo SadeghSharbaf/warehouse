@@ -17,4 +17,8 @@ urlpatterns = [
     path('receipt-item/<int:pk>/', views.ReceiptItemDetailView.as_view(), name='receipt-item-detail'),
     
     path('inventory/',views.InventoryListView.as_view(),name='inventory-list'),
+    path('inventory-history/', views.InventoryHistoryListView.as_view(), name='inventory-history'),
+    
+    path('returns/', views.ReturnCreateView.as_view(), name='return-list-create'),
+    path('returns/<int:pk>/', views.ReturnDetailView.as_view(), name='return-detail'),
 ]
