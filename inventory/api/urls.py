@@ -21,4 +21,6 @@ urlpatterns = [
     
     path('returns/', views.ReturnCreateView.as_view(), name='return-list-create'),
     path('returns/<int:pk>/', views.ReturnDetailView.as_view(), name='return-detail'),
+    
+    path('expiring/', views.ExpiringSoonView.as_view(), name='expiring')
 ]

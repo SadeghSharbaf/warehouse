@@ -3,6 +3,7 @@ from rest_framework.exceptions import ValidationError
 from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return
 from inventory.api import serializers
 from django.shortcuts import get_object_or_404
+from django.utils.timezone import now,timedelta
 
 class ItemListCreateView(generics.ListCreateAPIView):
     queryset = Item.objects.all()
@@ -47,8 +48,9 @@ class ReceiptItemView(generics.ListCreateAPIView):
             inventory.total_quantity += quantity
             inventory.save()
             
-            InventoryHistory.objects.create(item=item,change_type = Receipt.IMPORT,
-                                            quantity_changed = quantity)
+            InventoryHistory.objects.create(item=item,change_type =receipt.type,
+                                            quantity_changed = quantity,
+                                            receipt=receipt)
         
         elif receipt.type == Receipt.EXPORT:
             quantity_to_deduct = quantity
@@ -66,15 +68,16 @@ class ReceiptItemView(generics.ListCreateAPIView):
                     purchase.save()
                     quantity_to_deduct = 0
                 else:
-                    quantity_to_deduct -= quantity
+                    quantity_to_deduct -= purchase.quantity
                     purchase.quantity = 0
                     purchase.save()
             
             inventory.total_quantity -= quantity
             inventory.save()
             
-            InventoryHistory.objects.create(item=item, change_type = Receipt.EXPORT,
-                                            quantity_changed = quantity)
+            InventoryHistory.objects.create(item=item, change_type = receipt.type,
+                                            quantity_changed = quantity,
+                                            receipt=receipt)
         
 class ReceiptItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = ReceiptItem.objects.all()
@@ -99,6 +102,9 @@ class ReturnCreateView(generics.ListCreateAPIView):
         print(f" Return Item Quantity: {return_item.quantity_returned}")
         
         if receipt.type == Receipt.IMPORT:
+            if inventory.total_quantity < return_item.quantity_returned:
+                raise ValidationError("Cannot return more than available inventory!")
+            
             receipt_item.quantity -= return_item.quantity_returned
             receipt_item.save()
             
@@ -112,9 +118,21 @@ class ReturnCreateView(generics.ListCreateAPIView):
         
             inventory.total_quantity += return_item.quantity_returned
             inventory.save()
+            
+        InventoryHistory.objects.create(receipt=receipt,
+                                        item=receipt_item.purchase.item,
+                                        change_type="return",
+                                        quantity_changed=return_item.quantity_returned)
         print(f"After Update: {inventory.total_quantity}")
 
         
 class ReturnDetailView(generics.RetrieveAPIView):
     queryset = Return.objects.all()
     serializer_class = serializers.ReturnSerializer
+    
+class ExpiringSoonView(generics.ListAPIView):
+    serializer_class = serializers.PurchaseSerializer
+    
+    def get_queryset(self):
+        expire_date = now().date() + timedelta(days=30)
+        return Purchase.objects.filter(expiration_date__lte = expire_date).order_by('expiration_date')
