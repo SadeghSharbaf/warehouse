@@ -91,15 +91,27 @@ class ReturnCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         return_item = serializer.save()
         receipt_item = return_item.receipt_item
+        receipt = receipt_item.receipt
+        inventory = Inventory.objects.get(item=receipt_item.purchase.item)
         
         if return_item.quantity_returned > receipt_item.quantity:
             raise ValidationError("The returned quantity cannot exceed the exported quantity!")
         print(f" Return Item Quantity: {return_item.quantity_returned}")
-
         
-        inventory = Inventory.objects.get(item=receipt_item.purchase.item)
-        inventory.total_quantity += return_item.quantity_returned
-        inventory.save()
+        if receipt.type == Receipt.IMPORT:
+            receipt_item.quantity -= return_item.quantity_returned
+            receipt_item.save()
+            
+            inventory.total_quantity -= return_item.quantity_returned
+            inventory.save()
+            
+        elif receipt.type == Receipt.EXPORT:
+            
+            receipt_item.quantity -= return_item.quantity_returned
+            receipt_item.save()
+        
+            inventory.total_quantity += return_item.quantity_returned
+            inventory.save()
         print(f"After Update: {inventory.total_quantity}")
 
         
