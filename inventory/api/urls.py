@@ -23,5 +23,7 @@ urlpatterns = [
     path('returns/<int:pk>/', views.ReturnDetailView.as_view(), name='return-detail'),
     path('returns/history/', views.ReceiptHistoryView.as_view(), name='return-history'),
     
-    path('expiring/', views.ExpiringSoonView.as_view(), name='expiring')
+    path('expiring/', views.ExpiringSoonView.as_view(), name='expiring'),
+    
+    path('audit-trail/', views.AuditLogListView.as_view(), name='audit-trail'),
 ]

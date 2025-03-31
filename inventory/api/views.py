@@ -1,6 +1,7 @@
 from rest_framework import generics,viewsets,serializers
 from rest_framework.exceptions import ValidationError
-from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return,
+from django_filters.rest_framework import DjangoFilterBackend
+from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return,AuditLog
 from inventory.api import serializers
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now,timedelta
@@ -53,6 +54,9 @@ class ReceiptItemView(generics.ListCreateAPIView):
         quantity = receipt_item.quantity
         item = receipt_item.purchase.item
         
+        user = self.request.user if self.request.user.is_authenticated else None
+        print(f"User: {self.request.user} (Authenticated: {self.request.user.is_authenticated})")
+        
         if receipt.type == Receipt.IMPORT:
             inventory, created = Inventory.objects.get_or_create(item=item)
             inventory.total_quantity += quantity
@@ -61,6 +65,14 @@ class ReceiptItemView(generics.ListCreateAPIView):
             InventoryHistory.objects.create(item=item,change_type =receipt.type,
                                             quantity_changed = quantity,
                                             receipt=receipt)
+            
+
+            AuditLog.objects.create(
+                action = AuditLog.IMPORT,
+                item = item,
+                quantity = quantity,
+                user = user
+            )
         
         elif receipt.type == Receipt.EXPORT:
             quantity_to_deduct = quantity
@@ -88,6 +100,13 @@ class ReceiptItemView(generics.ListCreateAPIView):
             InventoryHistory.objects.create(item=item, change_type = receipt.type,
                                             quantity_changed = quantity,
                                             receipt=receipt)
+            
+            AuditLog.objects.create(
+                action= AuditLog.EXPORT,
+                item = item,
+                quantity = quantity,
+                user = self.request.user
+            )
         
 class ReceiptItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = ReceiptItem.objects.all()
@@ -111,6 +130,9 @@ class ReturnCreateView(generics.ListCreateAPIView):
             raise ValidationError("The returned quantity cannot exceed the exported quantity!")
         print(f" Return Item Quantity: {return_item.quantity_returned}")
         
+        user = self.request.user if self.request.user.is_authenticated else None
+        print(f"User: {self.request.user} (Authenticated: {self.request.user.is_authenticated})")
+        
         if receipt.type == Receipt.IMPORT:
             if inventory.total_quantity < return_item.quantity_returned:
                 raise ValidationError("Cannot return more than available inventory!")
@@ -120,6 +142,13 @@ class ReturnCreateView(generics.ListCreateAPIView):
             
             inventory.total_quantity -= return_item.quantity_returned
             inventory.save()
+            
+            AuditLog.objects.create(
+                action = AuditLog.RETURN,
+                item = receipt_item.purchase.item,
+                quantity = return_item.quantity_returned,
+                user = user
+            )
             
         elif receipt.type == Receipt.EXPORT:
             
@@ -134,6 +163,16 @@ class ReturnCreateView(generics.ListCreateAPIView):
                                         change_type="return",
                                         quantity_changed=return_item.quantity_returned)
         print(f"After Update: {inventory.total_quantity}")
+        
+        
+
+        AuditLog.objects.create(
+            action = AuditLog.RETURN,
+            item = receipt_item.purchase.item,
+            quantity = return_item.quantity_returned,
+            user = user
+        )
+
         
 
 class ReceiptHistoryView(generics.ListAPIView):
@@ -160,3 +199,10 @@ class ExpiringSoonView(generics.ListAPIView):
     def get_queryset(self):
         expire_date = now().date() + timedelta(days=30)
         return Purchase.objects.filter(expiration_date__lte = expire_date).order_by('expiration_date')
+
+
+class AuditLogListView(generics.ListAPIView):
+    queryset = AuditLog.objects.all().order_by('-timestamp')
+    serializer_class = serializers.AuditLogSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['action','item','user']

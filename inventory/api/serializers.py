@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return
+from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return,AuditLog
 
 class ItemSerializer(serializers.ModelSerializer):
     
@@ -59,4 +59,13 @@ class ReturnSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Return
+        fields = "__all__"
+        
+        
+class AuditLogSerializer(serializers.ModelSerializer):
+    item_name = serializers.CharField(source = "item.name", read_only = True)
+    user_name = serializers.CharField(source = "user.username", read_only = True)
+    
+    class Meta:
+        model = AuditLog
         fields = "__all__"

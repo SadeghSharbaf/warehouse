@@ -75,3 +75,25 @@ class Return(models.Model):
     def __str__(self):
         return f"from return{self.id} - {self.quantity_returned} {self.receipt_item.purchase.item.name} on {self.return_date.strftime('%Y-%m-%d %H:%M')}"
     
+    
+class AuditLog(models.Model):
+    
+    IMPORT = 'import'
+    EXPORT = 'export'
+    RETURN = 'return'
+    PURCHASE = 'purchase'
+    action_choises = [
+        ('import', IMPORT),
+        ('export', EXPORT),
+        ('return', RETURN),
+        ('purchase', PURCHASE)
+    ]
+    
+    action = models.CharField(max_length=15, choices=action_choises)
+    item = models.ForeignKey(Item, verbose_name=("item"), on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField()
+    timestamp = models.DateTimeField(auto_now_add = True)
+    user = models.ForeignKey(User, verbose_name=("user"), on_delete=models.CASCADE,blank=True, null=True)
+    
+    def __str__(self):
+        return f"{self.get_action_display()} : {self.user.name} ({self.quantity})"
