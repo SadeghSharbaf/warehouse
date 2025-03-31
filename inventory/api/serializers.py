@@ -7,6 +7,7 @@ class ItemSerializer(serializers.ModelSerializer):
         model = Item
         fields = "__all__"
         
+        
 class PurchaseSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.name', read_only=True)
 
@@ -23,11 +24,13 @@ class InventorySerializer(serializers.ModelSerializer):
         model = Inventory
         fields = "__all__"
         
+        
 class ReceiptSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Receipt
         fields = "__all__"
+        
         
 class ReceiptItemSerializer(serializers.ModelSerializer):
     purchase_name = serializers.CharField(source='purchase.item.name', read_only=True)
@@ -36,6 +39,7 @@ class ReceiptItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReceiptItem
         fields = "__all__"
+        
         
 class InventoryHistorySerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source = "item.name", read_only = True)
@@ -48,6 +52,7 @@ class InventoryHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryHistory
         fields = ["receipt_id", "purchase_id", "item_name", "change_type", "quantity_changed", "timestamp"]
+        
         
 class ReturnSerializer(serializers.ModelSerializer):
     receipt_item_datail = serializers.CharField(source = "receipt_item.purchase.item.name", read_only = True)

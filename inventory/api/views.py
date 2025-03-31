@@ -1,6 +1,6 @@
 from rest_framework import generics,viewsets,serializers
 from rest_framework.exceptions import ValidationError
-from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return
+from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return,
 from inventory.api import serializers
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now,timedelta
@@ -27,8 +27,18 @@ class InventoryListView(generics.ListAPIView):
     serializer_class = serializers.InventorySerializer
     
 class ReceiptVS(viewsets.ModelViewSet):
-    queryset = Receipt.objects.all()
+    queryset = Receipt.objects.all().order_by('-creation_date')
     serializer_class = serializers.ReceiptSerializer
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        receipt_type = self.request.query_params.get('type')
+        
+        if receipt_type:
+            queryset = queryset.filter(type=receipt_type)
+            
+        return queryset
+    
     
 class ReceiptItemView(generics.ListCreateAPIView):
     queryset = ReceiptItem.objects.all()
@@ -124,6 +134,20 @@ class ReturnCreateView(generics.ListCreateAPIView):
                                         change_type="return",
                                         quantity_changed=return_item.quantity_returned)
         print(f"After Update: {inventory.total_quantity}")
+        
+
+class ReceiptHistoryView(generics.ListAPIView):
+    queryset = Return.objects.all().order_by('-return_date')
+    serializer_class = serializers.ReturnSerializer
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        receipt_id = self.request.query_params.get('receipt')
+        
+        if receipt_id:
+            queryset = queryset.filter(receipt_item__receipt_id = receipt_id)
+        return queryset
+    
 
         
 class ReturnDetailView(generics.RetrieveAPIView):
