@@ -1,6 +1,7 @@
 from rest_framework import generics,viewsets,serializers
 from rest_framework.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.permissions import IsAuthenticated,AllowAny,IsAdminUser
 from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return,AuditLog
 from inventory.api import serializers
 from django.shortcuts import get_object_or_404
@@ -23,27 +24,26 @@ class PurchaseDetailView(generics.RetrieveAPIView):
     queryset = Purchase.objects.all()
     serializer_class = serializers.PurchaseSerializer
     
-class InventoryListView(generics.ListAPIView):
+class StockSummaryView(generics.ListAPIView):
     queryset = Inventory.objects.all()
     serializer_class = serializers.InventorySerializer
+    
+    def get_queryset(self):
+        return Inventory.objects.all().order_by('-total_quantity')
+    
     
 class ReceiptVS(viewsets.ModelViewSet):
     queryset = Receipt.objects.all().order_by('-creation_date')
     serializer_class = serializers.ReceiptSerializer
-    
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        receipt_type = self.request.query_params.get('type')
-        
-        if receipt_type:
-            queryset = queryset.filter(type=receipt_type)
-            
-        return queryset
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['type','creation_date']
     
     
 class ReceiptItemView(generics.ListCreateAPIView):
     queryset = ReceiptItem.objects.all()
     serializer_class = serializers.ReceiptItemSerializer
+    permission_classes = [IsAuthenticated]
     
     def perform_create(self, serializer):
         pk = self.request.data.get('receipt')
@@ -58,10 +58,12 @@ class ReceiptItemView(generics.ListCreateAPIView):
         print(f"User: {self.request.user} (Authenticated: {self.request.user.is_authenticated})")
         
         if receipt.type == Receipt.IMPORT:
-            inventory, created = Inventory.objects.get_or_create(item=item)
-            inventory.total_quantity += quantity
-            inventory.save()
-            
+            try:
+                inventory, created = Inventory.objects.get_or_create(item=item)
+                inventory.total_quantity += quantity
+                inventory.save()
+            except Inventory.DoesNotExist:
+                raise ValidationError("Inventory record for this item does not exist!")
             InventoryHistory.objects.create(item=item,change_type =receipt.type,
                                             quantity_changed = quantity,
                                             receipt=receipt)
@@ -119,6 +121,7 @@ class InventoryHistoryListView(generics.ListAPIView):
 class ReturnCreateView(generics.ListCreateAPIView):
     queryset = Return.objects.all()
     serializer_class = serializers.ReturnSerializer
+    permission_classes = [IsAuthenticated]
     
     def perform_create(self, serializer):
         return_item = serializer.save()
@@ -174,35 +177,37 @@ class ReturnCreateView(generics.ListCreateAPIView):
         )
 
         
-
-class ReceiptHistoryView(generics.ListAPIView):
+    
+class ReturnHistoryView(generics.ListAPIView):
     queryset = Return.objects.all().order_by('-return_date')
     serializer_class = serializers.ReturnSerializer
-    
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        receipt_id = self.request.query_params.get('receipt')
-        
-        if receipt_id:
-            queryset = queryset.filter(receipt_item__receipt_id = receipt_id)
-        return queryset
-    
-
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['receipt_item__receipt__type','receipt_item__purchase__item','quantity_returned','return_date']
         
 class ReturnDetailView(generics.RetrieveAPIView):
     queryset = Return.objects.all()
     serializer_class = serializers.ReturnSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
     
 class ExpiringSoonView(generics.ListAPIView):
     serializer_class = serializers.PurchaseSerializer
+    permission_classes = [AllowAny]
     
     def get_queryset(self):
-        expire_date = now().date() + timedelta(days=30)
+        days = self.request.query_params.get('days', 30)
+        try:
+            days = int(days)
+        except ValueError:
+            raise serializers.ValidationError({"days": "Invalid number"})
+        expire_date = now().date() + timedelta(days=days)
         return Purchase.objects.filter(expiration_date__lte = expire_date).order_by('expiration_date')
 
 
 class AuditLogListView(generics.ListAPIView):
     queryset = AuditLog.objects.all().order_by('-timestamp')
     serializer_class = serializers.AuditLogSerializer
+    permission_classes = [IsAdminUser]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['action','item','user']
+    filterset_fields = ['action','item','user','timestamp']
