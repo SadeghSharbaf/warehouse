@@ -46,7 +46,7 @@ class Receipt(models.Model):
     
     
 class ReceiptItem(models.Model):
-    receipt = models.ForeignKey(Receipt,verbose_name="receipt", on_delete=models.CASCADE)
+    receipt = models.ForeignKey(Receipt,verbose_name="receipt", on_delete=models.CASCADE,related_name='items')
     purchase = models.ForeignKey(Purchase,verbose_name="purchase", on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
     

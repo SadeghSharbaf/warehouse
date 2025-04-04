@@ -54,7 +54,7 @@ class ReceiptItemView(generics.ListCreateAPIView):
         print(f"User: {self.request.user} (Authenticated: {self.request.user.is_authenticated})")
         
         
-        for receipt_item in receipt.audit_logs,all():  
+        for receipt_item in receipt.items.all():  
             purchase = receipt_item.purchase
             quantity = receipt_item.quantity
             item = receipt_item.purchase.item
