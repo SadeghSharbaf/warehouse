@@ -50,65 +50,70 @@ class ReceiptItemView(generics.ListCreateAPIView):
         receipt = get_object_or_404(Receipt, pk=pk)
         
         receipt_item = serializer.save(receipt=receipt)
-        purchase = receipt_item.purchase
-        quantity = receipt_item.quantity
-        item = receipt_item.purchase.item
-        
         user = self.request.user if self.request.user.is_authenticated else None
         print(f"User: {self.request.user} (Authenticated: {self.request.user.is_authenticated})")
         
-        if receipt.type == Receipt.IMPORT:
-            try:
-                inventory, created = Inventory.objects.get_or_create(item=item)
-                inventory.total_quantity += quantity
-                inventory.save()
-            except Inventory.DoesNotExist:
-                raise ValidationError("Inventory record for this item does not exist!")
-            InventoryHistory.objects.create(item=item,change_type =receipt.type,
-                                            quantity_changed = quantity,
-                                            receipt=receipt)
+        
+        for receipt_item in receipt.audit_logs,all():  
+            purchase = receipt_item.purchase
+            quantity = receipt_item.quantity
+            item = receipt_item.purchase.item
             
 
-            AuditLog.objects.create(
-                action = AuditLog.IMPORT,
-                item = item,
-                quantity = quantity,
-                user = user
-            )
-        
-        elif receipt.type == Receipt.EXPORT:
-            quantity_to_deduct = quantity
-            purchases = Purchase.objects.filter(item=item).order_by('expiration_date')
-            
-            inventory = Inventory.objects.get(item=item)
-            if inventory.total_quantity < quantity:
-                raise serializers.ValidationError("inventory is not enough!")
-            for purchase in purchases:
-                if quantity_to_deduct <= 0 :
-                    break
+            if receipt.type == Receipt.IMPORT:
+                try:
+                    inventory, created = Inventory.objects.get_or_create(item=item)
+                    inventory.total_quantity += quantity
+                    inventory.save()
+                except Inventory.DoesNotExist:
+                    raise ValidationError("Inventory record for this item does not exist!")
+                InventoryHistory.objects.create(item=item,change_type =receipt.type,
+                                                quantity_changed = quantity,
+                                                receipt=receipt)
                 
-                if purchase.quantity >= quantity_to_deduct:
-                    purchase.quantity -= quantity_to_deduct
-                    purchase.save()
-                    quantity_to_deduct = 0
-                else:
-                    quantity_to_deduct -= purchase.quantity
-                    purchase.quantity = 0
-                    purchase.save()
-            
-            inventory.total_quantity -= quantity
-            inventory.save()
-            
-            InventoryHistory.objects.create(item=item, change_type = receipt.type,
-                                            quantity_changed = quantity,
-                                            receipt=receipt)
-            
-            AuditLog.objects.create(
-                action= AuditLog.EXPORT,
-                item = item,
-                quantity = quantity,
-                user = self.request.user
-            )
+
+                AuditLog.objects.create(
+                    action = AuditLog.IMPORT,
+                    item = item,
+                    quantity = quantity,
+                    user = user,
+                    receipt = receipt
+                )
+    
+            elif receipt.type == Receipt.EXPORT:
+                quantity_to_deduct = quantity
+                purchases = Purchase.objects.filter(item=item).order_by('expiration_date')
+                
+                inventory = Inventory.objects.get(item=item)
+                if inventory.total_quantity < quantity:
+                    raise serializers.ValidationError("inventory is not enough!")
+                for purchase in purchases:
+                    if quantity_to_deduct <= 0 :
+                        break
+                    
+                    if purchase.quantity >= quantity_to_deduct:
+                        purchase.quantity -= quantity_to_deduct
+                        purchase.save()
+                        quantity_to_deduct = 0
+                    else:
+                        quantity_to_deduct -= purchase.quantity
+                        purchase.quantity = 0
+                        purchase.save()
+                
+                inventory.total_quantity -= quantity
+                inventory.save()
+                
+                InventoryHistory.objects.create(item=item, change_type = receipt.type,
+                                                quantity_changed = quantity,
+                                                receipt=receipt)
+                
+                AuditLog.objects.create(
+                    action= AuditLog.EXPORT,
+                    item = item,
+                    quantity = quantity,
+                    user = self.request.user,
+                    receipt = receipt
+                )
         
 class ReceiptItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = ReceiptItem.objects.all()
@@ -150,7 +155,8 @@ class ReturnCreateView(generics.ListCreateAPIView):
                 action = AuditLog.RETURN,
                 item = receipt_item.purchase.item,
                 quantity = return_item.quantity_returned,
-                user = user
+                user = user,
+                receipt = receipt
             )
             
         elif receipt.type == Receipt.EXPORT:
@@ -173,7 +179,8 @@ class ReturnCreateView(generics.ListCreateAPIView):
             action = AuditLog.RETURN,
             item = receipt_item.purchase.item,
             quantity = return_item.quantity_returned,
-            user = user
+            user = user,
+            receipt = receipt
         )
 
         

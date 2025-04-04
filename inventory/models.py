@@ -23,6 +23,7 @@ class Purchase(models.Model):
 class Inventory(models.Model):
     item = models.OneToOneField(Item, verbose_name="item", on_delete=models.CASCADE)
     total_quantity = models.PositiveIntegerField(default=0,editable=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
         return f"{self.item.name}: {self.total_quantity} {self.item.unit}"
@@ -48,6 +49,11 @@ class ReceiptItem(models.Model):
     receipt = models.ForeignKey(Receipt,verbose_name="receipt", on_delete=models.CASCADE)
     purchase = models.ForeignKey(Purchase,verbose_name="purchase", on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
+    
+    def __str__(self):
+        return f"{self.quantity} {self.purchase.item.unit} from {self.purchase.item.name}"
+    
+    
     
 class InventoryHistory(models.Model):
     IMPORT = 'import'
@@ -94,6 +100,8 @@ class AuditLog(models.Model):
     quantity = models.PositiveIntegerField()
     timestamp = models.DateTimeField(auto_now_add = True)
     user = models.ForeignKey(User, verbose_name=("user"), on_delete=models.CASCADE,blank=True, null=True)
+    receipt = models.ForeignKey(Receipt,on_delete=models.CASCADE, related_name='audit_logs')
     
     def __str__(self):
-        return f"{self.get_action_display()} : {self.user.username} ({self.quantity})"
+        user_display = self.user.username if self.user else 'sistem'
+        return f"{self.get_action_display()} : {self.item.name} by {user_display}"
