@@ -1,6 +1,8 @@
-from rest_framework import generics,viewsets,serializers
+from rest_framework import generics,viewsets,serializers,status
+from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import models
 from rest_framework.permissions import IsAuthenticated,AllowAny,IsAdminUser
 from inventory.models import Item,Purchase,Inventory,Receipt,ReceiptItem,InventoryHistory,Return,AuditLog
 from inventory.api import serializers
@@ -45,75 +47,34 @@ class ReceiptItemView(generics.ListCreateAPIView):
     serializer_class = serializers.ReceiptItemSerializer
     permission_classes = [IsAuthenticated]
     
-    def perform_create(self, serializer):
-        pk = self.request.data.get('receipt')
-        receipt = get_object_or_404(Receipt, pk=pk)
+    def create(self, request, *args, **kwargs):
+        Is_bulk = isinstance(request.data , list)
         
-        receipt_item = serializer.save(receipt=receipt)
-        user = self.request.user if self.request.user.is_authenticated else None
-        print(f"User: {self.request.user} (Authenticated: {self.request.user.is_authenticated})")
+        serializer = self.get_serializer(data=request.data , many = Is_bulk)
+        serializer.is_valid(raise_exception = True)
         
-        
-        for receipt_item in receipt.items.all():  
-            purchase = receipt_item.purchase
-            quantity = receipt_item.quantity
-            item = receipt_item.purchase.item
+        if Is_bulk:
+            instances =[]
+            for item_data in request.data:
+                item_serializer = self.serializer_class(data=item_data, context= {"request":request})
+                item_serializer.is_valid(raise_exception=True)
+                instance = item_serializer.save()
+                instances.append(instance)
+            data = self.get_serializer(instances, many=True).data
             
-
-            if receipt.type == Receipt.IMPORT:
-                try:
-                    inventory, created = Inventory.objects.get_or_create(item=item)
-                    inventory.total_quantity += quantity
-                    inventory.save()
-                except Inventory.DoesNotExist:
-                    raise ValidationError("Inventory record for this item does not exist!")
-                InventoryHistory.objects.create(item=item,change_type =receipt.type,
-                                                quantity_changed = quantity,
-                                                receipt=receipt)
-                
-
-                AuditLog.objects.create(
-                    action = AuditLog.IMPORT,
-                    item = item,
-                    quantity = quantity,
-                    user = user,
-                    receipt = receipt
-                )
+        else :
+            serializer = self.get_serializer(data=request.data, context={"request": request})
+            serializer.is_valid(raise_exception=True)
+            instance = self.perform_create(serializer)
+            data = self.get_serializer(instance).data
+            
+        
+        return Response(data,status=status.HTTP_201_CREATED)
     
-            elif receipt.type == Receipt.EXPORT:
-                quantity_to_deduct = quantity
-                purchases = Purchase.objects.filter(item=item).order_by('expiration_date')
-                
-                inventory = Inventory.objects.get(item=item)
-                if inventory.total_quantity < quantity:
-                    raise serializers.ValidationError("inventory is not enough!")
-                for purchase in purchases:
-                    if quantity_to_deduct <= 0 :
-                        break
-                    
-                    if purchase.quantity >= quantity_to_deduct:
-                        purchase.quantity -= quantity_to_deduct
-                        purchase.save()
-                        quantity_to_deduct = 0
-                    else:
-                        quantity_to_deduct -= purchase.quantity
-                        purchase.quantity = 0
-                        purchase.save()
-                
-                inventory.total_quantity -= quantity
-                inventory.save()
-                
-                InventoryHistory.objects.create(item=item, change_type = receipt.type,
-                                                quantity_changed = quantity,
-                                                receipt=receipt)
-                
-                AuditLog.objects.create(
-                    action= AuditLog.EXPORT,
-                    item = item,
-                    quantity = quantity,
-                    user = self.request.user,
-                    receipt = receipt
-                )
+    def perform_create(self, serializer):
+        return serializer.save()
+    
+
         
 class ReceiptItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = ReceiptItem.objects.all()
@@ -128,62 +89,72 @@ class ReturnCreateView(generics.ListCreateAPIView):
     serializer_class = serializers.ReturnSerializer
     permission_classes = [IsAuthenticated]
     
-    def perform_create(self, serializer):
-        return_item = serializer.save()
+    
+    def create(self, request, *args, **kwargs):
+        is_bulk = isinstance(request.data, list)
+        serializer =self.get_serializer(data=request.data, many=is_bulk, context={"request":request})
+        serializer.is_valid(raise_exception=True)
+        
+        if is_bulk:
+            created_returns =[]
+            for item_data in request.data:
+                item_serializer = self.get_serializer(data=item_data, context={"request": request})
+                item_serializer.is_valid(raise_exception=True)
+                created_return = self.handel_return(item_serializer.validated_data)
+                created_returns.append(created_return)
+            reasponse_data = self.get_serializer(created_returns, many=True).data
+                
+        else:
+            created_return = self.handle_return(serializer.validated_data)
+            reasponse_data = self.get_serializer(created_return).data
+                
+        return Response(reasponse_data,status=status.HTTP_201_CREATED)
+        
+        
+    def handle_return(self, validated_data):
+        return_item = Return.objects.create(**validated_data)
         receipt_item = return_item.receipt_item
         receipt = receipt_item.receipt
-        inventory = Inventory.objects.get(item=receipt_item.purchase.item)
+        item = receipt_item.purchase.item
+        inventory = Inventory.objects.get(item=item)
+        user = self.request.user if self.request.user and self.request.user.is_authenticated else None
         
-        if return_item.quantity_returned > receipt_item.quantity:
+        total_return = Return.objects.filter(receipt_item=receipt_item).aggregate(total=models.Sum('quantity_returned'))['total'] or 0
+        if total_return + return_item.quantity_returned > receipt_item.quantity:
             raise ValidationError("The returned quantity cannot exceed the exported quantity!")
-        print(f" Return Item Quantity: {return_item.quantity_returned}")
-        
-        user = self.request.user if self.request.user.is_authenticated else None
-        print(f"User: {self.request.user} (Authenticated: {self.request.user.is_authenticated})")
         
         if receipt.type == Receipt.IMPORT:
             if inventory.total_quantity < return_item.quantity_returned:
                 raise ValidationError("Cannot return more than available inventory!")
             
             receipt_item.quantity -= return_item.quantity_returned
-            receipt_item.save()
-            
             inventory.total_quantity -= return_item.quantity_returned
-            inventory.save()
-            
-            AuditLog.objects.create(
-                action = AuditLog.RETURN,
-                item = receipt_item.purchase.item,
-                quantity = return_item.quantity_returned,
-                user = user,
-                receipt = receipt
-            )
             
         elif receipt.type == Receipt.EXPORT:
-            
             receipt_item.quantity -= return_item.quantity_returned
-            receipt_item.save()
-        
             inventory.total_quantity += return_item.quantity_returned
-            inventory.save()
             
-        InventoryHistory.objects.create(receipt=receipt,
-                                        item=receipt_item.purchase.item,
-                                        change_type="return",
-                                        quantity_changed=return_item.quantity_returned)
-        print(f"After Update: {inventory.total_quantity}")
+        receipt_item.save()
+        inventory.save()
         
-        
-
-        AuditLog.objects.create(
-            action = AuditLog.RETURN,
-            item = receipt_item.purchase.item,
-            quantity = return_item.quantity_returned,
-            user = user,
-            receipt = receipt
+        InventoryHistory.objects.create(
+            receipt=receipt,
+            item=item,
+            change_type="return",
+            quantity_changed=return_item.quantity_returned
         )
-
         
+        
+        
+        AuditLog.objects.create(
+            action=AuditLog.RETURN,
+            item=item,
+            quantity=return_item.quantity_returned,
+            user=user,
+            receipt=receipt
+        )
+    
+
     
 class ReturnHistoryView(generics.ListAPIView):
     queryset = Return.objects.all().order_by('-return_date')
