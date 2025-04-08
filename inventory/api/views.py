@@ -12,6 +12,7 @@ from django.utils.timezone import now,timedelta
 class ItemListCreateView(generics.ListCreateAPIView):
     queryset = Item.objects.all()
     serializer_class = serializers.ItemSerializer
+    permission_classes = [IsAuthenticated]
     
 class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Item.objects.all()
