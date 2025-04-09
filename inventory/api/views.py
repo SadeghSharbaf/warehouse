@@ -17,15 +17,18 @@ class ItemListCreateView(generics.ListCreateAPIView):
 class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Item.objects.all()
     serializer_class = serializers.ItemSerializer
+    permission_classes = [IsAuthenticated]
     
 
 class PurchaseCreateView(generics.ListCreateAPIView):
     queryset = Purchase.objects.all()
     serializer_class = serializers.PurchaseSerializer
+    permission_classes = [IsAuthenticated]
     
-class PurchaseDetailView(generics.RetrieveAPIView):
+class PurchaseDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Purchase.objects.all()
     serializer_class = serializers.PurchaseSerializer
+    permission_classes = [IsAuthenticated]
     
 class StockSummaryView(generics.ListAPIView):
     queryset = Inventory.objects.all()
