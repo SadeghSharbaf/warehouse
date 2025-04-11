@@ -17,6 +17,11 @@ class Purchase(models.Model):
     purchase_date = models.DateTimeField(auto_now_add=True)
     expiration_date = models.DateField(blank=True,null=False)
     
+    @staticmethod
+    def restore_quantities(purchase, quantity_to_restore):
+        purchase.quantity += quantity_to_restore
+        purchase.save()
+    
     def __str__(self):
         return f"{self.quantity} {self.item.unit} of {self.item.name}"
     
@@ -58,15 +63,17 @@ class ReceiptItem(models.Model):
 class InventoryHistory(models.Model):
     IMPORT = 'import'
     EXPORT = 'export'
+    DELETE = 'delete'
     
     TYPE_CHOICES =[
         (IMPORT,'import'),
-        (EXPORT,'export')
+        (EXPORT,'export'),
+        (DELETE, 'delete')
     ]
     item = models.ForeignKey(Item, verbose_name=("item"), on_delete=models.CASCADE,related_name="history")
     receipt =models.ForeignKey(Receipt, verbose_name=("receipt"), on_delete=models.CASCADE)
     change_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
-    quantity_changed = models.PositiveIntegerField()
+    quantity_changed = models.IntegerField()
     timestamp = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):

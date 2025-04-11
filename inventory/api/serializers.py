@@ -114,6 +114,74 @@ class ReceiptItemSerializer(serializers.ModelSerializer):
             )
         
         return receipt_item
+    
+    
+    def update(self, instance, validated_data):
+        request  = self.context.get("request")
+        user = request.user if request and request.user.is_authenticated else None
+        
+        old_quantity = instance.quantity
+        old_receipt_type = instance.receipt.type
+        item = instance.purchase.item
+        
+        new_quantity = validated_data.get('quantity', old_quantity)
+        
+        if old_quantity != new_quantity:
+            inventory = Inventory.objects.get(item=item)
+            
+            if old_receipt_type == Receipt.IMPORT:
+                inventory.total_quantity -= old_quantity
+                inventory.total_quantity += new_quantity
+                
+            elif old_receipt_type == Receipt.EXPORT:
+                inventory.total_quantity += old_quantity
+                if inventory.total_quantity < new_quantity:
+                    raise serializers.ValidationError("Inventory is not enough to update")
+                inventory.total_quantity -= new_quantity
+                
+                Purchase.objects.restore_quantities(instance.purchase, old_quantity)
+                quantity_to_detect = new_quantity
+                purchases = Purchase.objects.all().order_by('expiration_date')
+                
+                for purchase in purchases:
+                    if quantity_to_detect <= 0:
+                        break
+                    if purchase.quantity >= quantity_to_detect:
+                        purchase.quantity -= quantity_to_detect
+                        purchase.save()
+                        quantity_to_detect = 0
+                        
+                    else:
+                        quantity_to_detect -= purchase.quantity
+                        purchase.quantity = 0
+                        purchase.save()
+                        
+            if inventory.total_quantity < 0:
+                raise serializers.ValidationError("Inventory cannot be negative")
+            inventory.save()
+            diff = new_quantity - old_quantity
+            if diff != 0:
+                
+                if diff < 0:
+                    raise serializers.ValidationError("Quantity change cannot be negative.")
+                InventoryHistory.objects.create(
+                    item  = item,
+                    receipt = instance.receipt,
+                    change_type = old_receipt_type,
+                    quantity_changed = abs(diff)
+                )
+                
+                
+                AuditLog.objects.create(
+                    action = AuditLog.IMPORT if old_receipt_type == Receipt.IMPORT else AuditLog.EXPORT,
+                    item = item ,
+                    quantity = new_quantity - old_quantity,
+                    receipt = instance.receipt,
+                    user = user
+                )
+
+            
+        return super().update(instance, validated_data)
         
 class InventoryHistorySerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source = "item.name", read_only = True)
@@ -130,11 +198,11 @@ class InventoryHistorySerializer(serializers.ModelSerializer):
         
 class ReturnSerializer(serializers.ModelSerializer):
     receipt_item_datail = serializers.CharField(source = "receipt_item.purchase.item.name", read_only = True)
+
     
     class Meta:
         model = Return
         fields = ["id", "receipt_item", "receipt_item_datail", "quantity_returned", "return_date"]
-        
         
 
 class AuditLogSerializer(serializers.ModelSerializer):
