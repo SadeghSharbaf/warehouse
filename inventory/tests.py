@@ -460,23 +460,29 @@ class ReturnTesCase(APITestCase):
         )
         self.export_receipt = Receipt.objects.create(type = Receipt.EXPORT)
         self.inventory = Inventory.objects.create(item=self.item , total_quantity = 30)
-        self.export_receipt_item =ReceiptItem.objects.create(receipt=self.export_receipt, purchase=self.purchase, quantity=10)
+        self.export_receipt_item1 =ReceiptItem.objects.create(receipt=self.export_receipt, purchase=self.purchase, quantity=10)
+        self.export_receipt_item2 =ReceiptItem.objects.create(receipt=self.export_receipt, purchase=self.purchase, quantity=5)
         
         self.import_receipt = Receipt.objects.create(type=Receipt.IMPORT)
-        self.import_receipt_item = ReceiptItem.objects.create(
+        self.import_receipt_item1 = ReceiptItem.objects.create(
         receipt=self.import_receipt,
         purchase=self.purchase,
         quantity=5
+    )
+        self.import_receipt_item2 = ReceiptItem.objects.create(
+        receipt=self.import_receipt,
+        purchase=self.purchase,
+        quantity=4
     )
 
         
     
     def test_export_return_create(self):
         data = {
-            "receipt_item" : self.export_receipt_item.id,
+            "receipt_item" : self.export_receipt_item1.id,
             "quantity_returned" : 5
         }
-        self.purchase.quantity -= self.export_receipt_item.quantity
+        self.purchase.quantity -= self.export_receipt_item1.quantity
         self.purchase.save()
         response = self.client.post(reverse('return-list-create'), data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -487,7 +493,7 @@ class ReturnTesCase(APITestCase):
         self.assertEqual(inventory.total_quantity, 35)
         
         self.purchase.refresh_from_db()
-        self.assertEqual(self.purchase.quantity, 5)
+        self.assertEqual(self.purchase.quantity, 10)
         
         self.assertEqual(InventoryHistory.objects.count(), 1)
         history = InventoryHistory.objects.first()
@@ -507,11 +513,11 @@ class ReturnTesCase(APITestCase):
         
     def test_import_return_create(self):
         data = {
-            "receipt_item" : self.import_receipt_item.id,
+            "receipt_item" : self.import_receipt_item1.id,
             "quantity_returned" : 3
         }
         
-        initial_return_count = Return.objects.filter(receipt_item=self.import_receipt_item).count()
+        initial_return_count = Return.objects.filter(receipt_item=self.import_receipt_item1).count()
         self.assertEqual(initial_return_count, 0) 
         self.purchase.quantity += 5
         self.purchase.save()
@@ -532,8 +538,242 @@ class ReturnTesCase(APITestCase):
         self.inventory.refresh_from_db()
         self.assertEqual(self.inventory.total_quantity, 32)
         
-        self.import_receipt_item.refresh_from_db()
-        self.assertEqual(self.import_receipt_item.quantity, 2)
+        self.import_receipt_item1.refresh_from_db()
+        self.assertEqual(self.import_receipt_item1.quantity, 2)
         
         self.assertEqual(InventoryHistory.objects.count(), 1)
         self.assertEqual(AuditLog.objects.count(), 1)
+        
+        
+    def test_bulk_export_return_create(self):
+        data = [
+            {
+            "receipt_item" : self.export_receipt_item1.id,
+            "quantity_returned" : 3
+            },
+            {
+            "receipt_item" : self.export_receipt_item2.id,
+            "quantity_returned" : 2
+            }
+        ]
+        
+        self.purchase.quantity -= (self.export_receipt_item1.quantity + self.export_receipt_item2.quantity)
+        self.purchase.save()
+        
+        response = self.client.post(reverse('return-list-create'), data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        self.assertEqual(Return.objects.count(), 2)
+        
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.total_quantity, 35)
+        self.purchase.refresh_from_db()
+        self.assertEqual(self.purchase.quantity, 5)
+
+        
+        self.assertEqual(InventoryHistory.objects.count(), 2)
+        self.assertEqual(AuditLog.objects.count(), 2)
+        
+        
+    def test_bulk_import_return_create(self):
+        data = [
+            {
+            "receipt_item" : self.import_receipt_item1.id,
+            "quantity_returned" : 3
+            },
+            {
+            "receipt_item" : self.import_receipt_item2.id,
+            "quantity_returned" : 2
+            }
+        ]
+        
+        self.purchase.quantity += (self.import_receipt_item1.quantity + self.import_receipt_item2.quantity)
+        self.purchase.save()
+        
+        self.inventory.total_quantity += (self.import_receipt_item1.quantity + self.import_receipt_item2.quantity)
+        self.inventory.save()
+        
+        response = self.client.post(reverse('return-list-create'), data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        self.assertEqual(Return.objects.count(), 2)
+        
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.inventory.total_quantity, 30+9-5)
+        self.purchase.refresh_from_db()
+        self.assertEqual(self.purchase.quantity, 19)
+
+        
+        self.assertEqual(InventoryHistory.objects.count(), 2)
+        self.assertEqual(AuditLog.objects.count(), 2)
+        
+        
+    def test_export_return_quantity(self):
+        data = {
+            "receipt_item": self.export_receipt_item1.id ,
+            "quantity_returned": self.export_receipt_item1.quantity + 1
+        }
+        
+        response = self.client.post(reverse('return-list-create'), data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+        
+    def test_return_list(self):
+        response = self.client.get(reverse('return-list-create'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        
+
+class ReturnHistoryTestCase(APITestCase):
+    
+    def setUp(self):
+        self.user = User.objects.create_user(username="Sadeghh", password="1234")
+        self.token = Token.objects.create(user = self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+        
+        self.item = Item.objects.create(
+            name="Soda",
+            description="fanta soda",
+            unit="kilogram"
+        )
+        self.purchase = Purchase.objects.create(
+            item=self.item,
+            quantity=20,
+            price_per_unit=1000,
+            expiration_date=date(2025, 10, 30)
+        )
+        self.inventory = Inventory.objects.create(item=self.item , total_quantity = 20)
+        self.export_receipt = Receipt.objects.create(type = Receipt.EXPORT)
+        self.import_receipt = Receipt.objects.create(type=Receipt.IMPORT)
+        self.export_receipt_item =ReceiptItem.objects.create(
+            receipt=self.export_receipt, 
+            purchase=self.purchase,
+            quantity=5)
+        self.import_receipt_item = ReceiptItem.objects.create(
+            receipt=self.import_receipt,
+            purchase=self.purchase,
+            quantity=5
+        )
+        self.return1 = Return.objects.create(receipt_item=self.export_receipt_item, quantity_returned=2, return_date=date.today())
+        self.return2 = Return.objects.create(receipt_item=self.import_receipt_item, quantity_returned=3, return_date=date.today())
+        
+        
+    def test_returns_history(self):
+        response = self.client.get(reverse("return-history"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+        
+    
+    def test_returns_history_filter(self):
+        url = reverse("return-history") + "?receipt_item__receipt__type=export"
+        response = self.client.get(url)
+        print("Response data for import returns H:", response.data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["receipt_item"], self.export_receipt_item.id)
+
+        url = reverse("return-history") + "?receipt_item__receipt__type=import"
+        response = self.client.get(url)
+        print("Response data:", response.data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["receipt_item"], self.import_receipt_item.id)
+        
+    def test_filter_by_return_date(self):
+        today = date.today()
+        url = reverse("return-history") + f"?return_date={today}"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        
+    def test_returns_ind(self):
+        response = self.client.get(reverse('return-detail', args=(self.return1.id,)))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        
+        
+class ExpiringSoonTestCase(APITestCase):
+    
+    def setUp(self):
+        self.user = User.objects.create_user(username="Sadeghh", password="1234")
+        self.token = Token.objects.create(user = self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+        
+        self.item = Item.objects.create(
+            name="Soda",
+            description="fanta soda",
+            unit="kilogram"
+        )
+        self.purchase_soon = Purchase.objects.create(
+            item=self.item,
+            quantity=10,
+            price_per_unit=1000,
+            expiration_date=date(2025, 4, 15)
+        )
+        self.purchase_later = Purchase.objects.create(
+            item=self.item,
+            quantity=20,
+            price_per_unit=1500,
+            expiration_date=date(2025, 4, 20)
+        )
+        self.purchase_far = Purchase.objects.create(
+            item=self.item,
+            quantity=30,
+            price_per_unit=2000,
+            expiration_date=date(2025, 10, 30)
+        )
+        
+        
+    def test_expire_soon(self):
+        url = reverse('expiring') + "?days=10"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+        self.assertEqual(response.data[0]["id"], self.purchase_soon.id)
+        self.assertEqual(response.data[1]["id"], self.purchase_later.id)
+        
+        
+        
+class AuditLogListTestCase(APITestCase):
+    
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser(username="admin", password="adminpassword")
+        self.token = Token.objects.create(user = self.admin_user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.admin_user.auth_token.key)
+        self.normal_user = User.objects.create_user(username="user", password="userpassword")
+        
+        self.item = Item.objects.create(
+            name="Soda",
+            description="fanta soda",
+            unit="kilogram"
+        )
+        
+        self.export_receipt = Receipt.objects.create(type = Receipt.EXPORT)
+        self.import_receipt = Receipt.objects.create(type = Receipt.IMPORT)
+        
+        self.audit_log1 = AuditLog.objects.create(action="import", item=self.item,
+            user=self.admin_user, timestamp=date(2025, 8, 30), quantity = 10, receipt = self.import_receipt)
+        self.audit_log2 = AuditLog.objects.create(action="export", item=self.item,
+            user=self.admin_user, timestamp=date(2025, 7, 30), quantity = 20, receipt = self.import_receipt)
+        self.audit_log3 = AuditLog.objects.create(action="return", item=self.item,
+            user=self.normal_user, timestamp=date(2025, 10, 30), quantity = 30, receipt = self.export_receipt)
+        
+        
+    def test_audit_log_list_admin_access(self):
+        response = self.client.get(reverse('audit-trail'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 3)
+        
+        
+    def test_audit_log_list_normaluser(self):
+        self.token = Token.objects.create(user = self.normal_user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.normal_user.auth_token.key)
+        response = self.client.get(reverse('audit-trail'))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        
+    
+    def test_audit_log_filter_action(self):
+        url = reverse("audit-trail") + "?action=import"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code ,status.HTTP_200_OK)
+        self.assertEqual(response.data[0]["action"], "import")

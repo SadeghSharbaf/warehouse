@@ -194,12 +194,18 @@ class ReturnCreateView(generics.ListCreateAPIView):
             
             receipt_item.quantity -= return_item.quantity_returned
             inventory.total_quantity -= return_item.quantity_returned
+            receipt_item.purchase.quantity -= return_item.quantity_returned
+            receipt_item.purchase.save()
             
         elif receipt.type == Receipt.EXPORT:
             if total_return + return_item.quantity_returned > receipt_item.quantity:
                 raise ValidationError("The returned quantity cannot exceed the exported quantity!")
+            
             receipt_item.quantity -= return_item.quantity_returned
             inventory.total_quantity += return_item.quantity_returned
+            receipt_item.purchase.quantity += return_item.quantity_returned
+            receipt_item.purchase.save()
+            
             
         receipt_item.save()
         inventory.save()
