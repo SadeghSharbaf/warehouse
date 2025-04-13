@@ -54,7 +54,7 @@ class ReceiptItemAdmin(admin.ModelAdmin):
     
 @admin.register(InventoryHistory)
 class InventoryHistoryAdmin(admin.ModelAdmin):
-    list_display = ['item', 'receipt__id', 'change_type', 'quantity_changed', 'timestamp']
+    list_display = ['item', 'receipt', 'change_type', 'quantity_changed', 'timestamp']
     search_fields = ['item__name', 'change_type']
     list_filter = ['change_type', 'timestamp']
     ordering =['timestamp']
@@ -78,7 +78,7 @@ class ReturnAdmin(admin.ModelAdmin):
     
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):
-    list_display = ['action', 'item', 'quantity', 'timestamp', 'user', 'receipt__id']
+    list_display = ['action', 'item', 'quantity', 'timestamp', 'user', 'receipt']
     search_fields = ['user__username', 'item__name']
     list_filter = ['action', 'timestamp']
     date_hierarchy = 'timestamp'
