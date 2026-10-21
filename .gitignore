@@ -1,0 +1,33 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+venv/
+venv*/
+.venv/
+linkvenv/
+docuvenv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local databases and generated task schedules
+*.sqlite3
+*.sqlite3-journal
+celerybeat-schedule*
+*.bak
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# .NET / Visual Studio generated files
+.vs/
+bin/
+obj/
+*.csproj.user
