@@ -31,3 +31,6 @@ Thumbs.db
 bin/
 obj/
 *.csproj.user
+# Additional local database formats
+*.sqlite
+*.db
